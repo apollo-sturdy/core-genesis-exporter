@@ -104,6 +104,8 @@ var timestampsPerBlock = map[int64]time.Time{
 
 	// test
 	7684654: time.Unix(1652926192, 483),
+
+	8087587: time.Unix(1655390212, 78),
 }
 
 func PrepCtx(app *terra.TerraApp) context.Context {
