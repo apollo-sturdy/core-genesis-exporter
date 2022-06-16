@@ -34,7 +34,7 @@ import (
 
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	terraapp "github.com/terra-money/core/app"
-	export "github.com/terra-money/core/app/export"
+	"github.com/terra-money/core/app/export/apollo"
 	terralegacy "github.com/terra-money/core/app/legacy"
 	"github.com/terra-money/core/app/params"
 	authcustomcli "github.com/terra-money/core/custom/auth/client/cli"
@@ -247,6 +247,64 @@ func (a appCreator) newApp(logger log.Logger, db dbm.DB, traceStore io.Writer, a
 	)
 }
 
+// func (a appCreator) appExport(
+// 	logger log.Logger, db dbm.DB, traceStore io.Writer, height int64, forZeroHeight bool, jailAllowedAddrs []string,
+// 	appOpts servertypes.AppOptions) (servertypes.ExportedApp, error) {
+
+// 	homePath, ok := appOpts.Get(flags.FlagHome).(string)
+// 	if !ok || homePath == "" {
+// 		return servertypes.ExportedApp{}, errors.New("application home not set")
+// 	}
+
+// 	var terraApp *terraapp.TerraApp
+// 	if height != -1 {
+// 		terraApp = terraapp.NewTerraApp(logger, db, traceStore, false, map[int64]bool{}, homePath, cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod)), a.encodingConfig, appOpts, wasmconfig.DefaultConfig())
+
+// 		if err := terraApp.LoadHeight(height); err != nil {
+// 			return servertypes.ExportedApp{}, err
+// 		}
+// 	} else {
+// 		terraApp = terraapp.NewTerraApp(logger, db, traceStore, true, map[int64]bool{}, homePath, cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod)), a.encodingConfig, appOpts, wasmconfig.DefaultConfig())
+// 	}
+
+// 	// export partial state with validator
+// 	ctx := terraApp.NewContext(true, tmproto.Header{Height: terraApp.LastBlockHeight()})
+// 	height = terraApp.LastBlockHeight() + 1
+
+// 	// run contracts first
+// 	bank := export.ExportContracts(terraApp)
+// 	bankDefaultGenesis := banktypes.DefaultGenesisState()
+// 	bankDefaultGenesis.Balances = bank
+
+// 	bankState, err := json.Marshal(bankDefaultGenesis)
+// 	if err != nil {
+// 		return servertypes.ExportedApp{}, err
+// 	}
+
+// 	genState := make(map[string]json.RawMessage)
+// 	genState["bank"] = bankState
+
+// 	// partial export
+// 	exportModules := []string{"wasm"}
+
+// 	for _, moduleName := range exportModules {
+// 		genState[moduleName] = terraApp.ModuleManager().Modules[moduleName].ExportGenesis(ctx, terraApp.AppCodec())
+// 	}
+
+// 	appState, err := json.MarshalIndent(genState, "", "  ")
+// 	if err != nil {
+// 		return servertypes.ExportedApp{}, err
+// 	}
+
+// 	validators, err := staking.WriteValidators(ctx, terraApp.StakingKeeper)
+// 	return servertypes.ExportedApp{
+// 		AppState:        appState,
+// 		Validators:      validators,
+// 		Height:          height,
+// 		ConsensusParams: terraApp.BaseApp.GetConsensusParams(ctx),
+// 	}, err
+// }
+
 func (a appCreator) appExport(
 	logger log.Logger, db dbm.DB, traceStore io.Writer, height int64, forZeroHeight bool, jailAllowedAddrs []string,
 	appOpts servertypes.AppOptions) (servertypes.ExportedApp, error) {
@@ -271,34 +329,17 @@ func (a appCreator) appExport(
 	ctx := terraApp.NewContext(true, tmproto.Header{Height: terraApp.LastBlockHeight()})
 	height = terraApp.LastBlockHeight() + 1
 
-	// run contracts first
-	bank := export.ExportContracts(terraApp)
-	bankDefaultGenesis := banktypes.DefaultGenesisState()
-	bankDefaultGenesis.Balances = bank
-
-	bankState, err := json.Marshal(bankDefaultGenesis)
+	apolloUsers, err := apollo.ExportApolloUsers(terraApp)
 	if err != nil {
 		return servertypes.ExportedApp{}, err
 	}
 
-	genState := make(map[string]json.RawMessage)
-	genState["bank"] = bankState
-
-	// partial export
-	exportModules := []string{"wasm"}
-
-	for _, moduleName := range exportModules {
-		genState[moduleName] = terraApp.ModuleManager().Modules[moduleName].ExportGenesis(ctx, terraApp.AppCodec())
-	}
-
-	appState, err := json.MarshalIndent(genState, "", "  ")
-	if err != nil {
-		return servertypes.ExportedApp{}, err
-	}
+	res, err := json.Marshal(apolloUsers)
 
 	validators, err := staking.WriteValidators(ctx, terraApp.StakingKeeper)
+
 	return servertypes.ExportedApp{
-		AppState:        appState,
+		AppState:        res,
 		Validators:      validators,
 		Height:          height,
 		ConsensusParams: terraApp.BaseApp.GetConsensusParams(ctx),

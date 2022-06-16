@@ -67,6 +67,15 @@ func ExportApolloVaultLPs(app *terra.TerraApp, snapshot util.SnapshotBalanceAggr
 	return allLpHoldings, nil
 }
 
+func ExportApolloUsers(app *terra.TerraApp) ([]sdk.AccAddress, error) {
+	app.Logger().Info("Exporting Apollo Users")
+	ctx := util.PrepCtx(app)
+
+	users, err := getListOfUsers(ctx, app.WasmKeeper)
+
+	return users, err
+}
+
 func getLpHoldingsForStrat(ctx context.Context, keeper keeper.Keeper, strategyAddr sdk.AccAddress) (map[string]sdk.Int, sdk.AccAddress, error) {
 	lpTokenAddr, _, err := getStrategyConfig(ctx, keeper, strategyAddr)
 	if err != nil {
@@ -167,4 +176,20 @@ func getListOfStrategies(ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAd
 		return false
 	})
 	return strats, nil
+}
+
+func getListOfUsers(ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAddress, error) {
+	contractAddr, err := sdk.AccAddressFromBech32(apolloFactory)
+	if err != nil {
+		return nil, nil
+	}
+
+	prefix := util.GeneratePrefix("lm_rewards")
+	var users []sdk.AccAddress
+	keeper.IterateContractStateWithPrefix(sdk.UnwrapSDKContext(ctx), contractAddr, prefix, func(key, value []byte) bool {
+		walletAddr := sdk.AccAddress(key)
+		users = append(users, walletAddr)
+		return false
+	})
+	return users, nil
 }
