@@ -329,12 +329,19 @@ func (a appCreator) appExport(
 	ctx := terraApp.NewContext(true, tmproto.Header{Height: terraApp.LastBlockHeight()})
 	height = terraApp.LastBlockHeight() + 1
 
-	apolloUsers, err := apollo.ExportApolloUsers(terraApp)
+	//Export all vault users
+	// apolloUsers, err := apollo.ExportApolloUsers(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(apolloUsers)
+
+	//Export LP token holdings of static strategies
+	staticLpHoldings, err := apollo.ExportStaticVaultLPs(terraApp)
 	if err != nil {
 		return servertypes.ExportedApp{}, err
 	}
-
-	res, err := json.Marshal(apolloUsers)
+	res, err := json.Marshal(staticLpHoldings)
 
 	validators, err := staking.WriteValidators(ctx, terraApp.StakingKeeper)
 

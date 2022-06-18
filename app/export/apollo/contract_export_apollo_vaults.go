@@ -76,6 +76,33 @@ func ExportApolloUsers(app *terra.TerraApp) ([]sdk.AccAddress, error) {
 	return users, err
 }
 
+func ExportStaticVaultLPs(app *terra.TerraApp) (map[string]map[string]map[string]sdk.Int, error) {
+	app.Logger().Info("Exporting Apollo Vaults")
+	ctx := util.PrepCtx(app)
+
+	astroStaticStrat, err := sdk.AccAddressFromBech32("terra1x7v7qvumfl36g5jh0mtqx3c4g8c35sn0sqfuqp")
+	if err != nil {
+		log.Println(err)
+	}
+	terraswapStaticStrat, err := sdk.AccAddressFromBech32("terra14ge98vxgp3ey90d38wwk9xu73wydjz8vd66h3f")
+	if err != nil {
+		log.Println(err)
+	}
+
+	strats := []sdk.AccAddress{astroStaticStrat, terraswapStaticStrat}
+
+	allLpHoldings := make(map[string]map[string]map[string]sdk.Int)
+	for _, strat := range strats {
+		lpHoldings, lpTokenAddr, err := getLpHoldingsForStrat(ctx, app.WasmKeeper, strat)
+		if err != nil {
+			panic(err)
+		}
+		allLpHoldings[strat.String()] = make(map[string]map[string]sdk.Int)
+		allLpHoldings[strat.String()][lpTokenAddr.String()] = lpHoldings
+	}
+	return allLpHoldings, nil
+}
+
 func getLpHoldingsForStrat(ctx context.Context, keeper keeper.Keeper, strategyAddr sdk.AccAddress) (map[string]sdk.Int, sdk.AccAddress, error) {
 	lpTokenAddr, _, err := getStrategyConfig(ctx, keeper, strategyAddr)
 	if err != nil {

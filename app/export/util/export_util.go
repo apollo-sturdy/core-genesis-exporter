@@ -104,8 +104,15 @@ var timestampsPerBlock = map[int64]time.Time{
 
 	// test
 	7684654: time.Unix(1652926192, 483),
-
 	8087587: time.Unix(1655390212, 78),
+
+	// Apollo snapshot timestamps
+	7563136: time.Unix(1652057998, 0),
+	7583084: time.Unix(1652212798, 0),
+	7592133: time.Unix(1652284799, 0),
+	7615292: time.Unix(1652489998, 0),
+	7741139: time.Unix(1653278397, 0),
+	7811404: time.Unix(1653717601, 0),
 }
 
 func PrepCtx(app *terra.TerraApp) context.Context {
