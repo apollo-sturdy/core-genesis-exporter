@@ -214,7 +214,7 @@ func getListOfUsers(ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAddress
 	prefix := util.GeneratePrefix("lm_rewards")
 	var users []sdk.AccAddress
 	keeper.IterateContractStateWithPrefix(sdk.UnwrapSDKContext(ctx), contractAddr, prefix, func(key, value []byte) bool {
-		walletAddr := sdk.AccAddress(key)
+		walletAddr := sdk.AccAddress(key[:len(prefix)])
 		users = append(users, walletAddr)
 		return false
 	})
