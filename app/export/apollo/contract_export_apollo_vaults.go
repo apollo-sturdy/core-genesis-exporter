@@ -71,7 +71,7 @@ func ExportApolloUsers(app *terra.TerraApp) ([]sdk.AccAddress, error) {
 	app.Logger().Info("Exporting Apollo Users")
 	ctx := util.PrepCtx(app)
 
-	users, err := getListOfUsers(ctx, app.WasmKeeper)
+	users, err := getListOfUsers(app, ctx, app.WasmKeeper)
 
 	return users, err
 }
@@ -205,7 +205,7 @@ func getListOfStrategies(ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAd
 	return strats, nil
 }
 
-func getListOfUsers(ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAddress, error) {
+func getListOfUsers(app *terra.TerraApp, ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAddress, error) {
 	contractAddr, err := sdk.AccAddressFromBech32(apolloFactory)
 	if err != nil {
 		return nil, nil
@@ -214,7 +214,7 @@ func getListOfUsers(ctx context.Context, keeper keeper.Keeper) ([]sdk.AccAddress
 	prefix := util.GeneratePrefix("lm_rewards")
 	var users []sdk.AccAddress
 	keeper.IterateContractStateWithPrefix(sdk.UnwrapSDKContext(ctx), contractAddr, prefix, func(key, value []byte) bool {
-		walletAddr := sdk.AccAddress(key[len(prefix):])
+		walletAddr := sdk.AccAddress(key[2:22])
 		users = append(users, walletAddr)
 		return false
 	})
