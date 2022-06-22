@@ -16,6 +16,7 @@ import (
 
 var (
 	apolloFactory = "terra1g7jjjkt5uvkjeyhp8ecdz4e4hvtn83sud3tmh2"
+	cfeVesting    = "terra1878h54yx347vxnlx8e0la9ngdnqu4uw9u2ppma"
 )
 
 type Strategy struct {
@@ -43,6 +44,19 @@ type StakerInfoResponse struct {
 	Staker        string    `jsons:"staker"`
 	BondAmount    types.Int `json:"bond_amount"`
 	PendingReward types.Int `json:"pending_reward"`
+}
+
+type GetTotalCfeRewardsResponse struct {
+	PendingReward          types.Int `json:"pending_reward"`
+	ExtensionPendingReward types.Int `json:"extension_pending_reward"`
+}
+
+type CfeAccountResponse struct {
+	Address string `json:"address"`
+	Info    struct {
+		Phase1Claimable types.Int `json:"phase1_claimable_amount"`
+		Phase2Claimable types.Int `json:"phase2_claimable_amount"`
+	} `json:"info"`
 }
 
 // Exports all LP ownership from Apollo vaults
@@ -138,6 +152,67 @@ func ExportVaultRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
 	}
 
 	app.Logger().Info(fmt.Sprintf("Finished getting vault rewards. Total: %s", total.String()))
+
+	return pendingRewards, nil
+}
+
+func ExportCfeRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
+	app.Logger().Info("Exporting Apollo CFE Rewards")
+	ctx := util.PrepCtx(app)
+	qs := util.PrepWasmQueryServer(app)
+	keeper := app.WasmKeeper
+
+	contractAddr, err := sdk.AccAddressFromBech32(apolloFactory)
+	if err != nil {
+		return nil, nil
+	}
+
+	//Get all keys from store
+	prefix := util.GeneratePrefix("rewards")
+	addresses := make(map[string]bool)
+	keeper.IterateContractStateWithPrefix(sdk.UnwrapSDKContext(ctx), contractAddr, prefix, func(key, value []byte) bool {
+		walletAddr := sdk.AccAddress(key[2:22]).String()
+		// strategyId := string(key[22:len(key)])
+		_, exists := addresses[walletAddr]
+		if !exists {
+			addresses[walletAddr] = true
+		}
+		return false
+	})
+
+	app.Logger().Info(fmt.Sprintf("Got all keys. Len: %d", len(addresses)))
+
+	//SmartQuery on all keys
+	pendingRewards := make(map[string]sdk.Int)
+	total := sdk.ZeroInt()
+	i := 1
+	for walletAddr := range addresses {
+		// strategyId := string(key[22:])
+
+		var rewardsResponse CfeAccountResponse
+		if err := util.ContractQuery(ctx, qs, &wasmtypes.QueryContractStoreRequest{
+			ContractAddress: cfeVesting,
+			QueryMsg:        []byte(fmt.Sprintf("{\"cfe_account\":{\"address\":\"%s\"}}", walletAddr)),
+		}, &rewardsResponse); err != nil {
+			panic(fmt.Errorf("unable to query staker info: %v", err))
+		}
+
+		pendingReward := rewardsResponse.Info.Phase1Claimable.Add(rewardsResponse.Info.Phase2Claimable)
+
+		if !pendingReward.IsZero() {
+			if pendingRewards[walletAddr].IsNil() {
+				pendingRewards[walletAddr] = pendingReward
+			} else {
+				pendingRewards[walletAddr] = pendingRewards[walletAddr].Add(pendingReward)
+			}
+		}
+
+		total = total.Add(pendingReward)
+		app.Logger().Info(fmt.Sprintf("Fetched %d / %d. Total: %s", i, len(addresses), total.String()))
+		i++
+	}
+
+	app.Logger().Info(fmt.Sprintf("Finished getting cfe rewards. Total: %s", total.String()))
 
 	return pendingRewards, nil
 }
