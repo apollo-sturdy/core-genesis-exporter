@@ -343,12 +343,19 @@ func (a appCreator) appExport(
 	// }
 	// res, err := json.Marshal(vaultRewards)
 
-	//Export CFE rewards
-	cfeRewards, err := apollo.ExportCfeRewards(terraApp)
+	//Export Astro generator holdings
+	astroHoldings, err := apollo.ExportAstroGeneratorHoldings(terraApp)
 	if err != nil {
 		return servertypes.ExportedApp{}, err
 	}
-	res, err := json.Marshal(cfeRewards)
+	res, err := json.Marshal(astroHoldings)
+
+	//Export CFE rewards
+	// cfeRewards, err := apollo.ExportCfeRewards(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(cfeRewards)
 
 	//Export LP token holdings of static strategies
 	// staticLpHoldings, err := apollo.ExportStaticVaultLPs(terraApp)
