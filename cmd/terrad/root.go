@@ -344,11 +344,25 @@ func (a appCreator) appExport(
 	// res, err := json.Marshal(vaultRewards)
 
 	//Export Astro generator holdings
-	astroHoldings, err := apollo.ExportAstroGeneratorHoldings(terraApp)
+	// astroHoldings, err := apollo.ExportAstroGeneratorHoldings(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(astroHoldings)
+
+	//Export Astroport lockdrop holdings
+	// astroLockdropHoldings, err := apollo.ExportAstroLockdropHoldings(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(astroLockdropHoldings)
+
+	//Export Spec vault holdings
+	specVaultHoldings, err := apollo.ExportSpecVaultHoldings(terraApp)
 	if err != nil {
 		return servertypes.ExportedApp{}, err
 	}
-	res, err := json.Marshal(astroHoldings)
+	res, err := json.Marshal(specVaultHoldings)
 
 	//Export CFE rewards
 	// cfeRewards, err := apollo.ExportCfeRewards(terraApp)
