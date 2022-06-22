@@ -330,11 +330,18 @@ func (a appCreator) appExport(
 	height = terraApp.LastBlockHeight() + 1
 
 	//Export all vault users
-	apolloUsers, err := apollo.ExportApolloUsers(terraApp)
+	// apolloUsers, err := apollo.ExportApolloUsers(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(apolloUsers)
+
+	//Export vault rewards
+	vaultRewards, err := apollo.ExportVaultRewards(terraApp)
 	if err != nil {
 		return servertypes.ExportedApp{}, err
 	}
-	res, err := json.Marshal(apolloUsers)
+	res, err := json.Marshal(vaultRewards)
 
 	//Export LP token holdings of static strategies
 	// staticLpHoldings, err := apollo.ExportStaticVaultLPs(terraApp)

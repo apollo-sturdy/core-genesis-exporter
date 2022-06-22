@@ -3,6 +3,7 @@ package apollo
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 
 	"github.com/cosmos/cosmos-sdk/types"
@@ -10,6 +11,7 @@ import (
 	terra "github.com/terra-money/core/app"
 	util "github.com/terra-money/core/app/export/util"
 	"github.com/terra-money/core/x/wasm/keeper"
+	wasmtypes "github.com/terra-money/core/x/wasm/types"
 )
 
 var (
@@ -35,6 +37,12 @@ type StrategyConfig struct {
 
 type UserInfo struct {
 	Shares types.Int `json:"shares"`
+}
+
+type StakerInfoResponse struct {
+	Staker        string    `jsons:"staker"`
+	BondAmount    types.Int `json:"bond_amount"`
+	PendingReward types.Int `json:"pending_reward"`
 }
 
 // Exports all LP ownership from Apollo vaults
@@ -74,6 +82,64 @@ func ExportApolloUsers(app *terra.TerraApp) ([]sdk.AccAddress, error) {
 	users, err := getListOfUsers(app, ctx, app.WasmKeeper)
 
 	return users, err
+}
+
+func ExportVaultRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
+	app.Logger().Info("Exporting Apollo Vault Rewards")
+	ctx := util.PrepCtx(app)
+	qs := util.PrepWasmQueryServer(app)
+	keeper := app.WasmKeeper
+
+	contractAddr, err := sdk.AccAddressFromBech32(apolloFactory)
+	if err != nil {
+		return nil, nil
+	}
+
+	//Get all keys from store
+	prefix := util.GeneratePrefix("lm_rewards")
+	var keys [][]byte
+	keeper.IterateContractStateWithPrefix(sdk.UnwrapSDKContext(ctx), contractAddr, prefix, func(key, value []byte) bool {
+		// walletAddr := sdk.AccAddress(key[2:22])
+		// strategyId := string(key[22:len(key)])
+		keys = append(keys, key)
+		return false
+	})
+
+	app.Logger().Info(fmt.Sprintf("Got all keys. Len: %d", len(keys)))
+
+	//SmartQuery on all keys
+	pendingRewards := make(map[string]sdk.Int)
+	total := sdk.ZeroInt()
+	for i := 0; i < len(keys); i++ {
+		key := keys[i]
+		walletAddr := sdk.AccAddress(key[2:22]).String()
+		strategyId := string(key[22:])
+
+		var stakerInfoResponse StakerInfoResponse
+		if err := util.ContractQuery(ctx, qs, &wasmtypes.QueryContractStoreRequest{
+			ContractAddress: apolloFactory,
+			QueryMsg:        []byte(fmt.Sprintf("{\"get_staker_info\":{\"staker\":\"%s\",\"strategy_id\":%s}}", walletAddr, strategyId)),
+		}, &stakerInfoResponse); err != nil {
+			panic(fmt.Errorf("unable to query staker info: %v", err))
+		}
+
+		pendingReward := stakerInfoResponse.PendingReward
+
+		if !pendingReward.IsZero() {
+			if pendingRewards[walletAddr].IsNil() {
+				pendingRewards[walletAddr] = pendingReward
+			} else {
+				pendingRewards[walletAddr] = pendingRewards[walletAddr].Add(pendingReward)
+			}
+		}
+
+		total = total.Add(stakerInfoResponse.PendingReward)
+		app.Logger().Info(fmt.Sprintf("Fetched %d / %d. Total: %s", i, len(keys), total.String()))
+	}
+
+	app.Logger().Info(fmt.Sprintf("Finished getting vault rewards. Total: %s", total.String()))
+
+	return pendingRewards, nil
 }
 
 func ExportStaticVaultLPs(app *terra.TerraApp) (map[string]map[string]map[string]sdk.Int, error) {
