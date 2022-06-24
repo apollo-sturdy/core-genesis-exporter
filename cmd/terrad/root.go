@@ -358,18 +358,32 @@ func (a appCreator) appExport(
 	// res, err := json.Marshal(astroLockdropHoldings)
 
 	//Export Spec vault holdings
-	specVaultHoldings, err := apollo.ExportSpecVaultHoldings(terraApp)
-	if err != nil {
-		return servertypes.ExportedApp{}, err
-	}
-	res, err := json.Marshal(specVaultHoldings)
-
-	//Export CFE rewards
-	// cfeRewards, err := apollo.ExportCfeRewards(terraApp)
+	// specVaultHoldings, err := apollo.ExportSpecVaultHoldings(terraApp)
 	// if err != nil {
 	// 	return servertypes.ExportedApp{}, err
 	// }
-	// res, err := json.Marshal(cfeRewards)
+	// res, err := json.Marshal(specVaultHoldings)
+
+	//Export Apollo Astroport Static Strategy Holdings
+	// astroStaticHoldings, err := apollo.ExportApolloAstroVaultHoldings(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(astroStaticHoldings)
+
+	//Export Apollo Terraswap Static Strategy Holdings
+	// terraswapStaticHoldings, err := apollo.ExportApolloTerraswapVaultHoldings(terraApp)
+	// if err != nil {
+	// 	return servertypes.ExportedApp{}, err
+	// }
+	// res, err := json.Marshal(terraswapStaticHoldings)
+
+	//Export CFE rewards
+	cfeRewards, err := apollo.ExportCfeRewards(terraApp)
+	if err != nil {
+		return servertypes.ExportedApp{}, err
+	}
+	res, err := json.Marshal(cfeRewards)
 
 	//Export LP token holdings of static strategies
 	// staticLpHoldings, err := apollo.ExportStaticVaultLPs(terraApp)

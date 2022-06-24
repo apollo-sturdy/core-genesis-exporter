@@ -55,12 +55,18 @@ type GetTotalCfeRewardsResponse struct {
 	ExtensionPendingReward types.Int `json:"extension_pending_reward"`
 }
 
+type CfeAccountInfoResponse struct {
+	Phase1Claimable               types.Int `json:"phase1_claimable_amount"`
+	Phase2Claimable               types.Int `json:"phase2_claimable_amount"`
+	PendingRewardCLaimed          types.Int `json:"pending_reward_claimed"`
+	ExtensionPendingRewardClaimed types.Int `json:"extension_pending_reward_claimed"`
+	LastClaimedPhase1             types.Int `json:"last_claimed_phase1"`
+	LastClaimedPhase2             types.Int `json:"last_claimed_phase2"`
+}
+
 type CfeAccountResponse struct {
-	Address string `json:"address"`
-	Info    struct {
-		Phase1Claimable types.Int `json:"phase1_claimable_amount"`
-		Phase2Claimable types.Int `json:"phase2_claimable_amount"`
-	} `json:"info"`
+	Address string                 `json:"address"`
+	Info    CfeAccountInfoResponse `json:"info"`
 }
 
 type (
@@ -141,7 +147,7 @@ func ExportApolloUsers(app *terra.TerraApp) ([]sdk.AccAddress, error) {
 	return users, err
 }
 
-func ExportVaultRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
+func ExportVaultRewards(app *terra.TerraApp) ([]AddressWithBalance, error) {
 	app.Logger().Info("Exporting Apollo Vault Rewards")
 	ctx := util.PrepCtx(app)
 	qs := util.PrepWasmQueryServer(app)
@@ -194,12 +200,28 @@ func ExportVaultRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
 		app.Logger().Info(fmt.Sprintf("Fetched %d / %d. Total: %s", i, len(keys), total.String()))
 	}
 
+	i := 1
+	var results []AddressWithBalance
+	for address, reward := range pendingRewards {
+		_, err := keeper.GetContractInfo(sdk.UnwrapSDKContext(ctx), util.ToAddress(address))
+		isContract := err == nil
+
+		results = append(results, AddressWithBalance{
+			Address:    address,
+			Balance:    reward.String(),
+			IsContract: isContract,
+		})
+
+		app.Logger().Info(fmt.Sprintf("Got contract info for  %d / %d", i, len(pendingRewards)))
+		i++
+	}
+
 	app.Logger().Info(fmt.Sprintf("Finished getting vault rewards. Total: %s", total.String()))
 
-	return pendingRewards, nil
+	return results, nil
 }
 
-func ExportCfeRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
+func ExportCfeRewards(app *terra.TerraApp) (map[string]CfeAccountInfoResponse, error) {
 	app.Logger().Info("Exporting Apollo CFE Rewards")
 	ctx := util.PrepCtx(app)
 	qs := util.PrepWasmQueryServer(app)
@@ -226,7 +248,7 @@ func ExportCfeRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
 	app.Logger().Info(fmt.Sprintf("Got all keys. Len: %d", len(addresses)))
 
 	//SmartQuery on all keys
-	pendingRewards := make(map[string]sdk.Int)
+	cfeAccounts := make(map[string]CfeAccountInfoResponse)
 	total := sdk.ZeroInt()
 	i := 1
 	for walletAddr := range addresses {
@@ -240,24 +262,15 @@ func ExportCfeRewards(app *terra.TerraApp) (map[string]sdk.Int, error) {
 			panic(fmt.Errorf("unable to query staker info: %v", err))
 		}
 
-		pendingReward := rewardsResponse.Info.Phase1Claimable.Add(rewardsResponse.Info.Phase2Claimable)
+		cfeAccounts[walletAddr] = rewardsResponse.Info
 
-		if !pendingReward.IsZero() {
-			if pendingRewards[walletAddr].IsNil() {
-				pendingRewards[walletAddr] = pendingReward
-			} else {
-				pendingRewards[walletAddr] = pendingRewards[walletAddr].Add(pendingReward)
-			}
-		}
-
-		total = total.Add(pendingReward)
-		app.Logger().Info(fmt.Sprintf("Fetched %d / %d. Total: %s", i, len(addresses), total.String()))
+		app.Logger().Info(fmt.Sprintf("Fetched %d / %d", i, len(addresses)))
 		i++
 	}
 
 	app.Logger().Info(fmt.Sprintf("Finished getting cfe rewards. Total: %s", total.String()))
 
-	return pendingRewards, nil
+	return cfeAccounts, nil
 }
 
 func ExportAstroGeneratorHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) {
@@ -334,17 +347,18 @@ func ExportAstroGeneratorHoldings(app *terra.TerraApp) ([]AddressWithBalance, er
 }
 
 func ExportAstroLockdropHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) {
-	app.Logger().Info("Exporting Astroport Lockdrop Holdings")
+	app.Logger().Info("Exporting Astroport Lockdrop Holdings, fixed")
 	ctx := util.PrepCtx(app)
 	qs := util.PrepWasmQueryServer(app)
 	keeper := app.WasmKeeper
 
-	pairAddr := "terra1zpnhtf9h5s7ze2ewlqyer83sr4043qcq64zfc4"
+	astroPairAddr := "terra1zpnhtf9h5s7ze2ewlqyer83sr4043qcq64zfc4"
+	terraswapLpToken := "terra1n3gt4k3vth0uppk0urche6m3geu9eqcyujt88q"
 
 	var pool pool
 	//Query pool
 	if err := util.ContractQuery(ctx, qs, &wasmtypes.QueryContractStoreRequest{
-		ContractAddress: pairAddr,
+		ContractAddress: astroPairAddr,
 		QueryMsg:        []byte("{\"pool\":{}}"),
 	}, &pool); err != nil {
 		panic(fmt.Errorf("unable to... %v", err))
@@ -363,8 +377,43 @@ func ExportAstroLockdropHoldings(app *terra.TerraApp) ([]AddressWithBalance, err
 	}
 	totalShares := pool.TotalShare
 
+	//Get lockdrop deposits into generator
+	type poolInfo struct {
+		TerraswapAmountInLockup sdk.Int `json:"terraswap_amount_in_lockups"`
+		MigrationInfo           struct {
+			AstroportLPToken string `json:"astroport_lp_token"`
+		} `json:"migration_info"`
+	}
+	// res, err := qs.RawStore(ctx, &wasmtypes.QueryRawStoreRequest{
+	// 	ContractAddress: astroportLockdrop,
+	// 	Key:             util.GeneratePrefix(fmt.Sprintf("LiquidityPools%s", terraswapLpToken)),
+	// })
+	// if err != nil {
+	// 	panic(fmt.Errorf("unable to... %v", err))
+	// }
+	// var pi poolInfo
+	// util.MustUnmarshalTMJSON(res.Data, &pi)
+
+	var pi poolInfo
+	poolsPrefix := util.GeneratePrefix("LiquidityPools")
+	keeper.IterateContractStateWithPrefix(sdk.UnwrapSDKContext(ctx), util.ToAddress(astroportLockdrop), poolsPrefix, func(key, value []byte) bool {
+		var lpAddr = string(key)
+		if lpAddr == terraswapLpToken {
+			util.MustUnmarshalTMJSON(value, &pi)
+			return false
+		} else {
+			return false
+		}
+	})
+
+	var lpLockedInGenerator sdk.Int
+	util.ContractQuery(ctx, qs, &wasmtypes.QueryContractStoreRequest{
+		ContractAddress: astroportGenerator,
+		QueryMsg:        []byte(fmt.Sprintf("{ \"deposit\": { \"lp_token\": \"%s\", \"user\": \"%s\" } }", pi.MigrationInfo.AstroportLPToken, astroportLockdrop)),
+	}, &lpLockedInGenerator)
+
 	//Get all lp tokens from lockdrop and convert to Apollo
-	prefix := util.GeneratePrefix("lockup_position", "terra1n3gt4k3vth0uppk0urche6m3geu9eqcyujt88q")
+	prefix := util.GeneratePrefix("lockup_position", terraswapLpToken)
 	var lockupInfo struct {
 		LPUnitsLocked          sdk.Int `json:"lp_units_locked"`
 		AstroportLPTransferred sdk.Int `json:"astroport_lp_transferred"`
@@ -381,7 +430,10 @@ func ExportAstroLockdropHoldings(app *terra.TerraApp) ([]AddressWithBalance, err
 
 		// If LP transferred is not nil, means the user has withdrawn all LPs after unlock
 		if !lockupInfo.LPUnitsLocked.IsNil() && lockupInfo.AstroportLPTransferred.IsNil() {
-			shareRatio := sdk.NewDecFromInt(lockupInfo.LPUnitsLocked).Quo(sdk.NewDecFromInt(totalShares))
+			terraswapLpLocked := lockupInfo.LPUnitsLocked
+			astroLpLocked := terraswapLpLocked.Mul(lpLockedInGenerator).Quo(pi.TerraswapAmountInLockup)
+
+			shareRatio := sdk.NewDecFromInt(astroLpLocked).Quo(sdk.NewDecFromInt(totalShares))
 			usersApolloTokens := shareRatio.MulInt(tokensInPair).TruncateInt()
 
 			_, err := keeper.GetContractInfo(sdk.UnwrapSDKContext(ctx), util.ToAddress(userAddress))
@@ -425,7 +477,7 @@ func getRewardsInfo(ctx context.Context, q wasmtypes.QueryServer, farmAddr strin
 }
 
 func ExportSpecVaultHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) {
-	app.Logger().Info("Exporting Astroport Lockdrop Holdings")
+	app.Logger().Info("Exporting Spec Vault Holdings")
 	ctx := util.PrepCtx(app)
 	qs := util.PrepWasmQueryServer(app)
 	keeper := app.WasmKeeper
@@ -454,13 +506,6 @@ func ExportSpecVaultHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) 
 		panic("Apollo token not found in pair")
 	}
 	totalShares := pool.TotalShare
-
-	//Get all lp tokens from lockdrop and convert to Apollo
-	// prefix := util.GeneratePrefix("lockup_position", "terra1n3gt4k3vth0uppk0urche6m3geu9eqcyujt88q")
-	// var lockupInfo struct {
-	// 	LPUnitsLocked          sdk.Int `json:"lp_units_locked"`
-	// 	AstroportLPTransferred sdk.Int `json:"astroport_lp_transferred"`
-	// }
 
 	var results []AddressWithBalance
 	total := sdk.ZeroInt()
@@ -506,6 +551,130 @@ func ExportSpecVaultHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) 
 
 		return false
 	})
+
+	return results, nil
+}
+
+func ExportApolloAstroVaultHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) {
+	app.Logger().Info("Exporting Apollo-UST Astroport LP Apollo Vault Holdings")
+	ctx := util.PrepCtx(app)
+	qs := util.PrepWasmQueryServer(app)
+	keeper := app.WasmKeeper
+
+	pairAddr := "terra1zpnhtf9h5s7ze2ewlqyer83sr4043qcq64zfc4"
+
+	var pool pool
+	//Query pool
+	if err := util.ContractQuery(ctx, qs, &wasmtypes.QueryContractStoreRequest{
+		ContractAddress: pairAddr,
+		QueryMsg:        []byte("{\"pool\":{}}"),
+	}, &pool); err != nil {
+		panic(fmt.Errorf("unable to... %v", err))
+	}
+
+	//Get Apollo tokens in pool and total LP tokens
+	asset0 := pickDenomOrContractAddress(pool.Assets[0].AssetInfo)
+	asset1 := pickDenomOrContractAddress(pool.Assets[1].AssetInfo)
+	var tokensInPair sdk.Int
+	if asset0 == apolloToken {
+		tokensInPair = pool.Assets[0].Amount
+	} else if asset1 == apolloToken {
+		tokensInPair = pool.Assets[1].Amount
+	} else {
+		panic("Apollo token not found in pair")
+	}
+	totalShares := pool.TotalShare
+
+	var results []AddressWithBalance
+	total := sdk.ZeroInt()
+	i := 1
+
+	strat := util.ToAddress("terra1x7v7qvumfl36g5jh0mtqx3c4g8c35sn0sqfuqp")
+
+	lpHoldings, _, err := getLpHoldingsForStrat(ctx, app.WasmKeeper, strat)
+	if err != nil {
+		panic(err)
+	}
+
+	for walletAddr, lpBalance := range lpHoldings {
+		shareRatio := sdk.NewDecFromInt(lpBalance).Quo(sdk.NewDecFromInt(totalShares))
+		usersApolloTokens := shareRatio.MulInt(tokensInPair).TruncateInt()
+
+		_, err := keeper.GetContractInfo(sdk.UnwrapSDKContext(ctx), util.ToAddress(walletAddr))
+		isContract := err == nil
+
+		results = append(results, AddressWithBalance{
+			Address:    walletAddr,
+			Balance:    usersApolloTokens.String(),
+			IsContract: isContract,
+		})
+		total = total.Add(usersApolloTokens)
+
+		app.Logger().Info(fmt.Sprintf("Fetched %d / %d. Total Apollo tokens: %s", i, len(lpHoldings), total.String()))
+		i++
+	}
+
+	return results, nil
+}
+
+func ExportApolloTerraswapVaultHoldings(app *terra.TerraApp) ([]AddressWithBalance, error) {
+	app.Logger().Info("Exporting Apollo-UST Terraswap LP Apollo Vault Holdings")
+	ctx := util.PrepCtx(app)
+	qs := util.PrepWasmQueryServer(app)
+	keeper := app.WasmKeeper
+
+	pairAddr := "terra1xj2w7w8mx6m2nueczgsxy2gnmujwejjeu2xf78"
+
+	var pool pool
+	//Query pool
+	if err := util.ContractQuery(ctx, qs, &wasmtypes.QueryContractStoreRequest{
+		ContractAddress: pairAddr,
+		QueryMsg:        []byte("{\"pool\":{}}"),
+	}, &pool); err != nil {
+		panic(fmt.Errorf("unable to... %v", err))
+	}
+
+	//Get Apollo tokens in pool and total LP tokens
+	asset0 := pickDenomOrContractAddress(pool.Assets[0].AssetInfo)
+	asset1 := pickDenomOrContractAddress(pool.Assets[1].AssetInfo)
+	var tokensInPair sdk.Int
+	if asset0 == apolloToken {
+		tokensInPair = pool.Assets[0].Amount
+	} else if asset1 == apolloToken {
+		tokensInPair = pool.Assets[1].Amount
+	} else {
+		panic("Apollo token not found in pair")
+	}
+	totalShares := pool.TotalShare
+
+	var results []AddressWithBalance
+	total := sdk.ZeroInt()
+	i := 1
+
+	strat := util.ToAddress("terra14ge98vxgp3ey90d38wwk9xu73wydjz8vd66h3f")
+
+	lpHoldings, _, err := getLpHoldingsForStrat(ctx, app.WasmKeeper, strat)
+	if err != nil {
+		panic(err)
+	}
+
+	for walletAddr, lpBalance := range lpHoldings {
+		shareRatio := sdk.NewDecFromInt(lpBalance).Quo(sdk.NewDecFromInt(totalShares))
+		usersApolloTokens := shareRatio.MulInt(tokensInPair).TruncateInt()
+
+		_, err := keeper.GetContractInfo(sdk.UnwrapSDKContext(ctx), util.ToAddress(walletAddr))
+		isContract := err == nil
+
+		results = append(results, AddressWithBalance{
+			Address:    walletAddr,
+			Balance:    usersApolloTokens.String(),
+			IsContract: isContract,
+		})
+		total = total.Add(usersApolloTokens)
+
+		app.Logger().Info(fmt.Sprintf("Fetched %d / %d. Total Apollo tokens: %s", i, len(lpHoldings), total.String()))
+		i++
+	}
 
 	return results, nil
 }
