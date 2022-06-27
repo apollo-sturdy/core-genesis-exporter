@@ -60,8 +60,8 @@ type CfeAccountInfoResponse struct {
 	Phase2Claimable               types.Int `json:"phase2_claimable_amount"`
 	PendingRewardCLaimed          types.Int `json:"pending_reward_claimed"`
 	ExtensionPendingRewardClaimed types.Int `json:"extension_pending_reward_claimed"`
-	LastClaimedPhase1             types.Int `json:"last_claimed_phase1"`
-	LastClaimedPhase2             types.Int `json:"last_claimed_phase2"`
+	LastClaimedPhase1             int       `json:"last_claimed_phase1"`
+	LastClaimedPhase2             int       `json:"last_claimed_phase2"`
 }
 
 type CfeAccountResponse struct {
@@ -222,7 +222,7 @@ func ExportVaultRewards(app *terra.TerraApp) ([]AddressWithBalance, error) {
 }
 
 func ExportCfeRewards(app *terra.TerraApp) (map[string]CfeAccountInfoResponse, error) {
-	app.Logger().Info("Exporting Apollo CFE Rewards")
+	app.Logger().Info("Exporting Apollo CFE Rewards 5")
 	ctx := util.PrepCtx(app)
 	qs := util.PrepWasmQueryServer(app)
 	keeper := app.WasmKeeper
